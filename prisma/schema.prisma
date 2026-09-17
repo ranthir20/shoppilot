@@ -1,0 +1,73 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Product {
+  id        Int        @id @default(autoincrement())
+  userId    String
+  name      String
+  category  String
+  price     Float
+  stock     Int        @default(0)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  saleItems SaleItem[]
+
+  @@index([userId])
+}
+
+model Customer {
+  id             Int       @id @default(autoincrement())
+  userId         String
+  name           String
+  phone          String
+  totalPurchases Float     @default(0)
+  totalPaid      Float     @default(0)
+  totalDue       Float     @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  payments       Payment[]
+  sales          Sale[]
+
+  @@index([userId])
+}
+
+model Sale {
+  id          Int        @id @default(autoincrement())
+  userId      String
+  customerId  Int?
+  totalAmount Float
+  paidAmount  Float      @default(0)
+  dueAmount   Float      @default(0)
+  createdAt   DateTime   @default(now())
+  customer    Customer?  @relation(fields: [customerId], references: [id])
+  items       SaleItem[]
+
+  @@index([userId])
+}
+
+model SaleItem {
+  id        Int     @id @default(autoincrement())
+  saleId    Int
+  productId Int
+  quantity  Int
+  price     Float
+  total     Float
+  product   Product @relation(fields: [productId], references: [id])
+  sale      Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+}
+
+model Payment {
+  id         Int      @id @default(autoincrement())
+  userId     String
+  customerId Int
+  amount     Float
+  createdAt  DateTime @default(now())
+  customer   Customer @relation(fields: [customerId], references: [id])
+
+  @@index([userId])
+}

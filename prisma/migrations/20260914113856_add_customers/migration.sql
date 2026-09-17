@@ -1,0 +1,13 @@
+-- CreateTable
+CREATE TABLE "Customer" (
+    "id" SERIAL NOT NULL,
+    "name" TEXT NOT NULL,
+    "phone" TEXT NOT NULL,
+    "totalPurchases" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "totalPaid" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "totalDue" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Customer_pkey" PRIMARY KEY ("id")
+);
