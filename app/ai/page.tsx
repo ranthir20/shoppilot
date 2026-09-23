@@ -45,9 +45,40 @@ type Message = {
   text: string;
 };
 
+type SpeechRecognitionResultEvent = {
+  results: {
+    [index: number]: {
+      [index: number]: {
+        transcript: string;
+      };
+    };
+  };
+};
+
+type SpeechRecognitionInstance = {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onstart: () => void;
+  onresult: (event: SpeechRecognitionResultEvent) => void;
+  onerror: () => void;
+  onend: () => void;
+  start: () => void;
+};
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance;
+
+declare global {
+  interface Window {
+    SpeechRecognition?: SpeechRecognitionConstructor;
+    webkitSpeechRecognition?: SpeechRecognitionConstructor;
+  }
+}
+
 export default function AIPage() {
   const [data, setData] = useState<AIData | null>(null);
   const [question, setQuestion] = useState("");
+  const [isListening, setIsListening] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
@@ -85,6 +116,44 @@ export default function AIPage() {
 
   const formatMoney = (value: number) =>
     `₹${value.toLocaleString("en-IN")}`;
+
+  const startVoiceInput = () => {
+    if (typeof window === "undefined") return;
+
+    const SpeechRecognition =
+      window.SpeechRecognition ||
+      window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      alert("Voice input is not supported in this browser.");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+
+    recognition.lang = "en-IN";
+    recognition.continuous = false;
+    recognition.interimResults = false;
+
+    recognition.onstart = () => {
+      setIsListening(true);
+    };
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      setQuestion(transcript);
+    };
+
+    recognition.onerror = () => {
+      setIsListening(false);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognition.start();
+  };
 
   const answerQuestion = async () => {
     if (!question.trim() || !data) return;
@@ -146,10 +215,10 @@ export default function AIPage() {
   ];
 
   return (
-    <main className="h-screen overflow-hidden bg-gray-50">
+    <main className="min-h-screen bg-gray-50 md:h-screen md:overflow-hidden">
       <Sidebar />
 
-      <section className="ml-64 flex h-screen flex-col overflow-hidden p-8">
+      <section className="flex min-h-screen flex-col p-4 md:ml-64 md:h-screen md:overflow-hidden md:p-8">
         <div>
           <h2 className="text-3xl font-bold text-gray-900">
             AI Assistant
@@ -205,17 +274,32 @@ export default function AIPage() {
             </div>
 
             <div className="flex gap-3">
-              <input
-                value={question}
-                onChange={(event) => setQuestion(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    answerQuestion();
-                  }
-                }}
-                placeholder="Ask something about your business..."
-                className="flex-1 rounded-lg border px-4 py-3 text-black placeholder:text-gray-400 outline-none focus:ring-2 focus:ring-gray-300"
-              />
+              <div className="flex flex-1 gap-2">
+                <input
+                  value={question}
+                  onChange={(event) => setQuestion(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      answerQuestion();
+                    }
+                  }}
+                  placeholder="Ask something about your business..."
+                  className="min-w-0 flex-1 rounded-lg border px-4 py-3 text-black placeholder:text-gray-400 outline-none focus:ring-2 focus:ring-gray-300"
+                />
+
+                <button
+                  type="button"
+                  onClick={startVoiceInput}
+                  aria-label={isListening ? "Listening" : "Use voice input"}
+                  className={`rounded-lg border px-4 py-3 font-medium transition ${
+                    isListening
+                      ? "border-red-300 bg-red-50 text-red-600"
+                      : "text-gray-700 hover:bg-gray-50"
+                  }`}
+                >
+                  {isListening ? "🔴" : "🎙️"}
+                </button>
+              </div>
 
               <button
                 onClick={answerQuestion}

@@ -28,6 +28,8 @@ export default function PaymentsPage() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState("");
+  const [dateFilter, setDateFilter] = useState("ALL");
 
   const loadData = async () => {
     try {
@@ -49,6 +51,40 @@ export default function PaymentsPage() {
     loadData();
   }, []);
 
+  const filteredPayments = payments.filter((payment) => {
+    const query = search.toLowerCase().trim();
+
+    const matchesSearch =
+      !query ||
+      String(payment.id).includes(query) ||
+      payment.customer.name.toLowerCase().includes(query) ||
+      payment.customer.phone.toLowerCase().includes(query);
+
+    const paymentDate = new Date(payment.createdAt);
+    const now = new Date();
+
+    let matchesDate = true;
+
+    if (dateFilter === "TODAY") {
+      matchesDate =
+        paymentDate.toDateString() === now.toDateString();
+    }
+
+    if (dateFilter === "WEEK") {
+      const weekAgo = new Date(now);
+      weekAgo.setDate(now.getDate() - 7);
+      matchesDate = paymentDate >= weekAgo;
+    }
+
+    if (dateFilter === "MONTH") {
+      matchesDate =
+        paymentDate.getMonth() === now.getMonth() &&
+        paymentDate.getFullYear() === now.getFullYear();
+    }
+
+    return matchesSearch && matchesDate;
+  });
+
   const selectedCustomer = customers.find(
     (customer) => customer.id === Number(customerId)
   );
@@ -66,7 +102,12 @@ export default function PaymentsPage() {
       return;
     }
 
-    if (paymentAmount <= 0) {
+    if (!selectedCustomer) {
+      alert("Selected customer was not found.");
+      return;
+    }
+
+    if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
       alert("Payment amount must be greater than zero.");
       return;
     }
@@ -118,7 +159,7 @@ export default function PaymentsPage() {
     <main className="min-h-screen bg-gray-50">
       <Sidebar />
 
-      <section className="ml-64 p-8">
+      <section className="md:ml-64 p-4 md:p-8">
         <div>
           <h2 className="text-3xl font-bold text-gray-900">
             Payments & Dues
@@ -228,8 +269,9 @@ export default function PaymentsPage() {
               Loading customers...
             </div>
           ) : (
-            <table className="w-full">
-              <thead className="border-b bg-gray-50">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[650px]">
+                <thead className="border-b bg-gray-50">
                 <tr>
                   <th className="px-6 py-4 text-left text-sm font-semibold">
                     Customer
@@ -278,25 +320,55 @@ export default function PaymentsPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+              </table>
+            </div>
           )}
         </div>
 
         <div className="mt-8 overflow-hidden rounded-xl border bg-white">
-          <div className="border-b p-6">
+          <div className="flex flex-col gap-4 border-b p-6 md:flex-row md:items-center md:justify-between">
             <h3 className="text-lg font-semibold">
               Payment History
             </h3>
+
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search payment, customer or phone..."
+                className="w-full rounded-lg border px-4 py-2 text-sm outline-none focus:border-black md:w-80"
+              />
+
+              <select
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+                className="rounded-lg border px-4 py-2 text-sm outline-none focus:border-black"
+              >
+                <option value="ALL">All time</option>
+                <option value="TODAY">Today</option>
+                <option value="WEEK">Last 7 days</option>
+                <option value="MONTH">This month</option>
+              </select>
+            </div>
           </div>
 
           {payments.length === 0 ? (
             <div className="p-12 text-center text-gray-500">
               No payments recorded yet.
             </div>
+          ) : filteredPayments.length === 0 ? (
+            <div className="p-12 text-center text-gray-500">
+              No payments match your search.
+            </div>
           ) : (
-            <table className="w-full">
-              <thead className="border-b bg-gray-50">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[650px]">
+                <thead className="border-b bg-gray-50">
                 <tr>
+                  <th className="px-6 py-4 text-left text-sm font-semibold">
+                    Payment ID
+                  </th>
                   <th className="px-6 py-4 text-left text-sm font-semibold">
                     Customer
                   </th>
@@ -310,13 +382,22 @@ export default function PaymentsPage() {
               </thead>
 
               <tbody>
-                {payments.map((payment) => (
+                {filteredPayments.map((payment) => (
                   <tr
                     key={payment.id}
                     className="border-b last:border-0"
                   >
                     <td className="px-6 py-4 font-medium">
-                      {payment.customer.name}
+                      #{payment.id}
+                    </td>
+
+                    <td className="px-6 py-4">
+                      <p className="font-medium">
+                        {payment.customer.name}
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        {payment.customer.phone}
+                      </p>
                     </td>
 
                     <td className="px-6 py-4 font-medium text-green-600">
@@ -331,7 +412,8 @@ export default function PaymentsPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+              </table>
+            </div>
           )}
         </div>
       </section>

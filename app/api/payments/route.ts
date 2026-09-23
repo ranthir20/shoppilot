@@ -46,73 +46,91 @@ export async function POST(request: Request) {
     const customerId = Number(body.customerId);
     const amount = Number(body.amount);
 
-    if (!customerId || amount <= 0) {
+    if (
+      !Number.isInteger(customerId) ||
+      customerId <= 0 ||
+      !Number.isFinite(amount) ||
+      amount <= 0
+    ) {
       return NextResponse.json(
         { error: "Invalid customer or payment amount" },
         { status: 400 }
       );
     }
 
-    const customer = await prisma.customer.findFirst({
-      where: {
-        id: customerId,
-        userId,
-      },
-    });
-
-    if (!customer) {
-      return NextResponse.json(
-        { error: "Customer not found" },
-        { status: 404 }
-      );
-    }
-
-    if (amount > customer.totalDue) {
-      return NextResponse.json(
-        {
-          error: `Payment cannot exceed current due of ₹${customer.totalDue}`,
+    const payment = await prisma.$transaction(async (tx) => {
+      const customer = await tx.customer.findFirst({
+        where: {
+          id: customerId,
+          userId,
         },
-        { status: 400 }
-      );
-    }
+      });
 
-    const payment = await prisma.payment.create({
-      data: {
-        userId,
-        customerId,
-        amount,
-      },
-      include: {
-        customer: true,
-      },
-    });
+      if (!customer) {
+        throw new Error("CUSTOMER_NOT_FOUND");
+      }
 
-    await prisma.customer.update({
-      where: {
-        id: customerId,
-      },
-      data: {
-        totalPaid: {
-          increment: amount,
+      if (amount > customer.totalDue) {
+        throw new Error("PAYMENT_EXCEEDS_DUE");
+      }
+
+      const updatedCustomer = await tx.customer.updateMany({
+        where: {
+          id: customerId,
+          userId,
+          totalDue: {
+            gte: amount,
+          },
         },
-        totalDue: {
-          decrement: amount,
+        data: {
+          totalPaid: {
+            increment: amount,
+          },
+          totalDue: {
+            decrement: amount,
+          },
         },
-      },
+      });
+
+      if (updatedCustomer.count !== 1) {
+        throw new Error("PAYMENT_EXCEEDS_DUE");
+      }
+
+      return tx.payment.create({
+        data: {
+          userId,
+          customerId,
+          amount,
+        },
+        include: {
+          customer: true,
+        },
+      });
     });
 
     return NextResponse.json(payment, { status: 201 });
   } catch (error) {
-    console.error(error);
+    console.error("Payment creation error:", error);
+
+    if (error instanceof Error) {
+      if (error.message === "CUSTOMER_NOT_FOUND") {
+        return NextResponse.json(
+          { error: "Customer not found" },
+          { status: 404 }
+        );
+      }
+
+      if (error.message === "PAYMENT_EXCEEDS_DUE") {
+        return NextResponse.json(
+          { error: "Payment cannot exceed the customer's current due" },
+          { status: 400 }
+        );
+      }
+    }
 
     return NextResponse.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to record payment",
-      },
-      { status: 400 }
+      { error: "Failed to record payment" },
+      { status: 500 }
     );
   }
 }

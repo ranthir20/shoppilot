@@ -40,7 +40,10 @@ export async function POST(request: Request) {
 
     const body = await request.json();
 
-    if (!body.name || !body.phone) {
+    const name = typeof body.name === "string" ? body.name.trim() : "";
+    const phone = typeof body.phone === "string" ? body.phone.trim() : "";
+
+    if (!name || !phone) {
       return NextResponse.json(
         { error: "Name and phone are required" },
         { status: 400 }
@@ -50,8 +53,8 @@ export async function POST(request: Request) {
     const customer = await prisma.customer.create({
       data: {
         userId,
-        name: body.name,
-        phone: body.phone,
+        name,
+        phone,
       },
     });
 
@@ -61,6 +64,67 @@ export async function POST(request: Request) {
 
     return NextResponse.json(
       { error: "Failed to create customer" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const { userId } = await auth();
+
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = await request.json();
+    const id = Number(body.id);
+
+    if (!Number.isInteger(id) || id <= 0) {
+      return NextResponse.json(
+        { error: "Invalid customer ID" },
+        { status: 400 }
+      );
+    }
+
+    if (!body.name?.trim() || !body.phone?.trim()) {
+      return NextResponse.json(
+        { error: "Name and phone are required" },
+        { status: 400 }
+      );
+    }
+
+    const customer = await prisma.customer.updateMany({
+      where: {
+        id,
+        userId,
+      },
+      data: {
+        name: body.name.trim(),
+        phone: body.phone.trim(),
+      },
+    });
+
+    if (customer.count !== 1) {
+      return NextResponse.json(
+        { error: "Customer not found" },
+        { status: 404 }
+      );
+    }
+
+    const updatedCustomer = await prisma.customer.findFirst({
+      where: {
+        id,
+        userId,
+      },
+    });
+
+    return NextResponse.json(updatedCustomer);
+  } catch (error) {
+    console.error(error);
+
+    return NextResponse.json(
+      { error: "Failed to update customer" },
       { status: 500 }
     );
   }

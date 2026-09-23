@@ -61,144 +61,239 @@ export async function POST(request: Request) {
       );
     }
 
-    if (customerId) {
-      const customer = await prisma.customer.findFirst({
-        where: {
-          id: customerId,
-          userId,
-        },
-      });
-
-      if (!customer) {
-        return NextResponse.json(
-          { error: "Customer not found" },
-          { status: 404 }
-        );
-      }
+    if (
+      customerId !== null &&
+      (!Number.isInteger(customerId) || customerId <= 0)
+    ) {
+      return NextResponse.json(
+        { error: "Invalid customer ID" },
+        { status: 400 }
+      );
     }
 
-    const saleItems = [];
-    let totalAmount = 0;
-
-    for (const item of body.items) {
-      const productId = Number(item.productId);
-      const quantity = Number(item.quantity);
-
-      if (quantity <= 0) {
-        return NextResponse.json(
-          { error: "Quantity must be greater than zero" },
-          { status: 400 }
-        );
-      }
-
-      const product = await prisma.product.findFirst({
-        where: {
-          id: productId,
-          userId,
-        },
-      });
-
-      if (!product) {
-        return NextResponse.json(
-          { error: `Product ${productId} not found` },
-          { status: 404 }
-        );
-      }
-
-      if (product.stock < quantity) {
-        return NextResponse.json(
-          {
-            error: `Not enough stock for ${product.name}. Available: ${product.stock}`,
-          },
-          { status: 400 }
-        );
-      }
-
-      const itemTotal = product.price * quantity;
-      totalAmount += itemTotal;
-
-      saleItems.push({
-        productId,
-        quantity,
-        price: product.price,
-        total: itemTotal,
-      });
-    }
-
-    if (paidAmount < 0 || paidAmount > totalAmount) {
+    if (!Number.isFinite(paidAmount) || paidAmount < 0) {
       return NextResponse.json(
         { error: "Invalid paid amount" },
         { status: 400 }
       );
     }
 
-    const dueAmount = totalAmount - paidAmount;
+    const sale = await prisma.$transaction(async (tx) => {
+      if (customerId !== null) {
+        const customer = await tx.customer.findFirst({
+          where: {
+            id: customerId,
+            userId,
+          },
+        });
 
-    const sale = await prisma.sale.create({
-      data: {
-        userId,
-        customerId,
-        totalAmount,
-        paidAmount,
-        dueAmount,
-        items: {
-          create: saleItems,
-        },
-      },
-      include: {
-        customer: true,
-        items: {
-          include: {
-            product: true,
+        if (!customer) {
+          throw new Error("CUSTOMER_NOT_FOUND");
+        }
+      }
+
+      const requestedItems = body.items.map((item: unknown) => {
+        const data = item as {
+          productId?: unknown;
+          quantity?: unknown;
+        };
+
+        const productId = Number(data.productId);
+        const quantity = Number(data.quantity);
+
+        if (!Number.isInteger(productId) || productId <= 0) {
+          throw new Error("INVALID_PRODUCT_ID");
+        }
+
+        if (!Number.isInteger(quantity) || quantity <= 0) {
+          throw new Error("INVALID_QUANTITY");
+        }
+
+        return { productId, quantity };
+      });
+
+      const quantities = new Map<number, number>();
+
+      for (const item of requestedItems) {
+        quantities.set(
+          item.productId,
+          (quantities.get(item.productId) || 0) + item.quantity
+        );
+      }
+
+      const productIds = Array.from(quantities.keys());
+
+      const products = await tx.product.findMany({
+        where: {
+          userId,
+          id: {
+            in: productIds,
           },
         },
-      },
+      });
+
+      if (products.length !== productIds.length) {
+        throw new Error("PRODUCT_NOT_FOUND");
+      }
+
+      const productMap = new Map(
+        products.map((product) => [product.id, product])
+      );
+
+      let totalAmount = 0;
+
+      const saleItems = requestedItems.map((item: { productId: number; quantity: number }) => {
+        const product = productMap.get(item.productId);
+
+        if (!product) {
+          throw new Error("PRODUCT_NOT_FOUND");
+        }
+
+        const itemTotal = product.price * item.quantity;
+        totalAmount += itemTotal;
+
+        return {
+          productId: item.productId,
+          quantity: item.quantity,
+          price: product.price,
+          total: itemTotal,
+        };
+      });
+
+      if (paidAmount > totalAmount) {
+        throw new Error("INVALID_PAID_AMOUNT");
+      }
+
+      for (const [productId, quantity] of quantities) {
+        const updated = await tx.product.updateMany({
+          where: {
+            id: productId,
+            userId,
+            stock: {
+              gte: quantity,
+            },
+          },
+          data: {
+            stock: {
+              decrement: quantity,
+            },
+          },
+        });
+
+        if (updated.count !== 1) {
+          throw new Error("INSUFFICIENT_STOCK");
+        }
+      }
+
+      const dueAmount = totalAmount - paidAmount;
+
+      const createdSale = await tx.sale.create({
+        data: {
+          userId,
+          customerId,
+          totalAmount,
+          paidAmount,
+          dueAmount,
+          items: {
+            create: saleItems,
+          },
+        },
+        include: {
+          customer: true,
+          items: {
+            include: {
+              product: true,
+            },
+          },
+        },
+      });
+
+      for (const [productId, quantity] of quantities) {
+        await tx.stockMovement.create({
+          data: {
+            userId,
+            productId,
+            type: "SALE",
+            quantity: -quantity,
+            reason: `Sale #${createdSale.id}`,
+          },
+        });
+      }
+
+      if (customerId !== null) {
+        await tx.customer.updateMany({
+          where: {
+            id: customerId,
+            userId,
+          },
+          data: {
+            totalPurchases: {
+              increment: totalAmount,
+            },
+            totalPaid: {
+              increment: paidAmount,
+            },
+            totalDue: {
+              increment: dueAmount,
+            },
+          },
+        });
+      }
+
+      return createdSale;
     });
-
-    for (const item of saleItems) {
-      await prisma.product.update({
-        where: {
-          id: item.productId,
-        },
-        data: {
-          stock: {
-            decrement: item.quantity,
-          },
-        },
-      });
-    }
-
-    if (customerId) {
-      await prisma.customer.update({
-        where: {
-          id: customerId,
-        },
-        data: {
-          totalPurchases: {
-            increment: totalAmount,
-          },
-          totalPaid: {
-            increment: paidAmount,
-          },
-          totalDue: {
-            increment: dueAmount,
-          },
-        },
-      });
-    }
 
     return NextResponse.json(sale, { status: 201 });
   } catch (error) {
-    console.error(error);
+    console.error("Sale creation error:", error);
+
+    if (error instanceof Error) {
+      if (error.message === "CUSTOMER_NOT_FOUND") {
+        return NextResponse.json(
+          { error: "Customer not found" },
+          { status: 404 }
+        );
+      }
+
+      if (error.message === "PRODUCT_NOT_FOUND") {
+        return NextResponse.json(
+          { error: "One or more products were not found" },
+          { status: 404 }
+        );
+      }
+
+      if (error.message === "INVALID_PRODUCT_ID") {
+        return NextResponse.json(
+          { error: "Invalid product ID" },
+          { status: 400 }
+        );
+      }
+
+      if (error.message === "INVALID_QUANTITY") {
+        return NextResponse.json(
+          { error: "Quantity must be a positive whole number" },
+          { status: 400 }
+        );
+      }
+
+      if (error.message === "INVALID_PAID_AMOUNT") {
+        return NextResponse.json(
+          { error: "Paid amount cannot exceed the sale total" },
+          { status: 400 }
+        );
+      }
+
+      if (error.message === "INSUFFICIENT_STOCK") {
+        return NextResponse.json(
+          { error: "Insufficient stock for one or more products" },
+          { status: 400 }
+        );
+      }
+    }
 
     return NextResponse.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to create sale",
-      },
-      { status: 400 }
+      { error: "Failed to create sale" },
+      { status: 500 }
     );
   }
 }

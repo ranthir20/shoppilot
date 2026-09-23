@@ -7,22 +7,23 @@ datasource db {
 }
 
 model Product {
-  id        Int        @id @default(autoincrement())
-  userId    String
-  name      String
-  category  String
-  price     Float
-  stock     Int        @default(0)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-  saleItems SaleItem[]
+  id             Int             @id @default(autoincrement())
+  name           String
+  category       String
+  price          Float
+  stock          Int             @default(0)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  userId         String
+  returnItems    ReturnItem[]
+  saleItems      SaleItem[]
+  stockMovements StockMovement[]
 
   @@index([userId])
 }
 
 model Customer {
   id             Int       @id @default(autoincrement())
-  userId         String
   name           String
   phone          String
   totalPurchases Float     @default(0)
@@ -30,6 +31,7 @@ model Customer {
   totalDue       Float     @default(0)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
+  userId         String
   payments       Payment[]
   sales          Sale[]
 
@@ -37,14 +39,15 @@ model Customer {
 }
 
 model Sale {
-  id          Int        @id @default(autoincrement())
-  userId      String
+  id          Int             @id @default(autoincrement())
   customerId  Int?
   totalAmount Float
-  paidAmount  Float      @default(0)
-  dueAmount   Float      @default(0)
-  createdAt   DateTime   @default(now())
-  customer    Customer?  @relation(fields: [customerId], references: [id])
+  paidAmount  Float           @default(0)
+  dueAmount   Float           @default(0)
+  createdAt   DateTime        @default(now())
+  userId      String
+  returns     ProductReturn[]
+  customer    Customer?       @relation(fields: [customerId], references: [id])
   items       SaleItem[]
 
   @@index([userId])
@@ -63,11 +66,57 @@ model SaleItem {
 
 model Payment {
   id         Int      @id @default(autoincrement())
-  userId     String
   customerId Int
   amount     Float
   createdAt  DateTime @default(now())
+  userId     String
   customer   Customer @relation(fields: [customerId], references: [id])
 
   @@index([userId])
+}
+
+model StockMovement {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  productId Int
+  type      String
+  quantity  Int
+  reason    String?
+  createdAt DateTime @default(now())
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([productId])
+  @@index([createdAt])
+}
+
+model ProductReturn {
+  id              Int          @id @default(autoincrement())
+  userId          String
+  saleId          Int
+  totalAmount     Float
+  createdAt       DateTime     @default(now())
+  refundMethod    String       @default("CASH")
+  refundReference String?
+  refundStatus    String       @default("COMPLETED")
+  sale            Sale         @relation(fields: [saleId], references: [id])
+  items           ReturnItem[]
+
+  @@index([userId])
+  @@index([saleId])
+  @@index([createdAt])
+}
+
+model ReturnItem {
+  id        Int           @id @default(autoincrement())
+  returnId  Int
+  productId Int
+  quantity  Int
+  price     Float
+  total     Float
+  product   Product       @relation(fields: [productId], references: [id])
+  return    ProductReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+
+  @@index([returnId])
+  @@index([productId])
 }

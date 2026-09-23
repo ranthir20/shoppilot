@@ -43,8 +43,8 @@ export async function GET() {
       0
     );
 
-    const totalPaid = sales.reduce(
-      (sum, sale) => sum + sale.paidAmount,
+    const totalPaid = customers.reduce(
+      (sum, customer) => sum + customer.totalPaid,
       0
     );
 
@@ -62,6 +62,10 @@ export async function GET() {
     const outOfStockProducts = products.filter(
       (product) => product.stock === 0
     );
+
+    const restockProducts = products
+      .filter((product) => product.stock > 0 && product.stock <= 10)
+      .sort((a, b) => a.stock - b.stock);
 
     const productSales = new Map<
       number,
@@ -282,6 +286,25 @@ export async function POST(request: Request) {
 
     const totalOrders = sales.length;
 
+    const totalProducts = products.length;
+    const totalCustomers = customers.length;
+
+    const totalPaid = customers.reduce(
+      (sum, customer) => sum + customer.totalPaid,
+      0
+    );
+
+    const averageOrderValue =
+      totalOrders === 0 ? 0 : totalSales / totalOrders;
+
+    const highestSale = sales.reduce(
+      (highest, sale) =>
+        sale.totalAmount > (highest?.totalAmount || 0)
+          ? sale
+          : highest,
+      sales[0] || null
+    );
+
     const totalDue = customers.reduce(
       (sum, customer) => sum + customer.totalDue,
       0
@@ -294,6 +317,10 @@ export async function POST(request: Request) {
     const outOfStockProducts = products.filter(
       (product) => product.stock === 0
     );
+
+    const restockProducts = products
+      .filter((product) => product.stock > 0 && product.stock <= 10)
+      .sort((a, b) => a.stock - b.stock);
 
     const productSales = new Map<
       number,
@@ -560,6 +587,98 @@ export async function POST(request: Request) {
             .join("\n");
       }
     } else if (
+      question.includes("average order") ||
+      question.includes("average sale") ||
+      question.includes("average bill") ||
+      question.includes("average purchase")
+    ) {
+      answer =
+        totalOrders === 0
+          ? "There are no recorded sales yet to calculate an average order value."
+          : `Your average order value is ${formatMoney(
+              averageOrderValue
+            )} across ${totalOrders} order(s).`;
+    } else if (
+      question.includes("how many orders today") ||
+      question.includes("number of orders today") ||
+      question.includes("orders today")
+    ) {
+      answer =
+        `You have ${todaySales.length} order(s) today, totaling ${formatMoney(
+          todayTotal
+        )}.`;
+    } else if (
+      question.includes("highest sale") ||
+      question.includes("biggest sale") ||
+      question.includes("largest sale") ||
+      question.includes("highest order")
+    ) {
+      if (!highestSale) {
+        answer = "There are no recorded sales yet.";
+      } else {
+        answer =
+          `Your highest recorded sale is Sale #${highestSale.id} ` +
+          `for ${formatMoney(highestSale.totalAmount)}.`;
+      }
+    } else if (
+      question.includes("what should i restock") ||
+      question.includes("what should i restock first") ||
+      question.includes("what needs restocking") ||
+      question.includes("what needs to be restocked")
+    ) {
+      if (restockProducts.length === 0) {
+        answer = "No products are currently in the low-stock range.";
+      } else {
+        answer =
+          "These products should be checked for restocking first:\n\n" +
+          restockProducts
+            .map(
+              (product) =>
+                `• ${product.name}: ${product.stock} left`
+            )
+            .join("\n");
+      }
+    } else if (
+      question.includes("how many products") ||
+      question.includes("number of products")
+    ) {
+      answer =
+        `You currently have ${totalProducts} product(s) in your inventory.`;
+    } else if (
+      question.includes("how many customers") ||
+      question.includes("number of customers")
+    ) {
+      answer =
+        `You currently have ${totalCustomers} customer(s) registered.`;
+    } else if (
+      question.includes("paid") &&
+      (
+        question.includes("how much") ||
+        question.includes("total")
+      )
+    ) {
+      answer =
+        `Customers have paid ${formatMoney(
+          totalPaid
+        )} against recorded sales. Current pending dues are ${formatMoney(
+          totalDue
+        )}.`;
+    } else if (
+      question.includes("performance") ||
+      question.includes("business summary") ||
+      question.includes("business overview") ||
+      question.includes("how is my business")
+    ) {
+      answer =
+        `Business summary:\n\n` +
+        `• Sales: ${formatMoney(totalSales)}\n` +
+        `• Orders: ${totalOrders}\n` +
+        `• Customers: ${totalCustomers}\n` +
+        `• Products: ${totalProducts}\n` +
+        `• Pending dues: ${formatMoney(totalDue)}\n` +
+        `• Low stock: ${lowStockProducts.length} product(s)\n` +
+        `• Out of stock: ${outOfStockProducts.length} product(s)`;
+    } else if (
       question.includes("customer") ||
       question.includes("customers")
     ) {
@@ -588,12 +707,7 @@ export async function POST(request: Request) {
     console.error("AI engine error:", error);
 
     return NextResponse.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to process AI question",
-      },
+      { error: "Failed to process AI question" },
       { status: 500 }
     );
   }
