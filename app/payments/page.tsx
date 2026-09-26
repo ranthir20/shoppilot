@@ -149,7 +149,7 @@ export default function PaymentsPage() {
       alert("Payment recorded successfully!");
     } catch (error) {
       console.error("Failed to record payment:", error);
-      alert("Something went wrong.");
+      alert("Could not record the payment. Please try again.");
     } finally {
       setSaving(false);
     }

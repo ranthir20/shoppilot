@@ -82,7 +82,7 @@ export default function CustomersPage() {
       await loadCustomers();
     } catch (error) {
       console.error("Failed to update customer:", error);
-      alert("Failed to update customer.");
+      alert("Could not update the customer. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -125,7 +125,7 @@ export default function CustomersPage() {
       });
 
       if (!response.ok) {
-        alert("Failed to add customer.");
+        alert("Could not add the customer. Please check the details and try again.");
         return;
       }
 

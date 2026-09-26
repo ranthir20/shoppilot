@@ -243,7 +243,7 @@ export default function SalesPage() {
       alert("Sale created successfully!");
     } catch (error) {
       console.error("Failed to create sale:", error);
-      alert("Something went wrong.");
+      alert("Could not complete the sale. Please try again.");
     } finally {
       setSaving(false);
     }
