@@ -11,18 +11,11 @@ const isProtectedRoute = createRouteMatcher([
   "/ai(.*)",
 ]);
 
-export default clerkMiddleware(
-  async (auth, req) => {
-    if (isProtectedRoute(req)) {
-      await auth.protect();
-    }
-  },
-  {
-    frontendApiProxy: {
-      enabled: true,
-    },
+export default clerkMiddleware(async (auth, req) => {
+  if (isProtectedRoute(req)) {
+    await auth.protect();
   }
-);
+});
 
 export const config = {
   matcher: [
